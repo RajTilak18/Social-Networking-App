@@ -1,3 +1,4 @@
+from django_ratelimit.decorators import ratelimit
 from django.shortcuts import render
 from django.core.exceptions import PermissionDenied
 from rest_framework.views import APIView
@@ -16,6 +17,7 @@ from .serializers import UserSerializer
 from rest_framework import generics, permissions
 from .models import FriendRequest
 from .serializers import FriendRequestSerializer
+
 
 class SignupView(APIView):
     def post(self, request):
@@ -61,6 +63,10 @@ class SendFriendRequestView(generics.CreateAPIView):
 
     def perform_create(self, serializer):
         serializer.save(sender=self.request.user)
+
+    @ratelimit(key='user', rate='3/m', method='ALL', block=True)
+    def post(self, request, *args, **kwargs):
+        return super().post(request, *args, **kwargs)
 
 class UpdateFriendRequestView(generics.UpdateAPIView):
     serializer_class = FriendRequestSerializer

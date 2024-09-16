@@ -1,6 +1,5 @@
 from django.shortcuts import render
-
-# Create your views here.
+from django.core.exceptions import PermissionDenied
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
@@ -9,6 +8,14 @@ from django.contrib.auth.models import User
 from .serializers import UserSerializer
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.pagination import PageNumberPagination
+from rest_framework import generics, permissions
+from rest_framework.pagination import PageNumberPagination
+from django.db.models import Q
+from .models import User
+from .serializers import UserSerializer
+from rest_framework import generics, permissions
+from .models import FriendRequest
+from .serializers import FriendRequestSerializer
 
 class SignupView(APIView):
     def post(self, request):
@@ -31,3 +38,50 @@ class LoginView(APIView):
 class CustomPagination(PageNumberPagination):
     page_size = 10
 
+class UserSearchView(generics.ListAPIView):
+    serializer_class = UserSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    pagination_class = PageNumberPagination
+
+    def get_queryset(self):
+        keyword = self.request.query_params.get('q', '')
+        if not keyword:
+            return User.objects.none()
+        
+        # Search by exact email or partial name
+        queryset = User.objects.filter(
+            Q(email__iexact=keyword) | Q(name__icontains=keyword)
+        )
+        return queryset
+
+
+class SendFriendRequestView(generics.CreateAPIView):
+    serializer_class = FriendRequestSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def perform_create(self, serializer):
+        serializer.save(sender=self.request.user)
+
+class UpdateFriendRequestView(generics.UpdateAPIView):
+    serializer_class = FriendRequestSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_object(self):
+        obj = FriendRequest.objects.get(id=self.kwargs['pk'])
+        if obj.receiver != self.request.user:
+            raise PermissionDenied("You do not have permission to modify this request.")
+        return obj
+
+class ListFriendsView(generics.ListAPIView):
+    serializer_class = FriendRequestSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        return FriendRequest.objects.filter(sender=self.request.user, status='accepted')
+
+class ListPendingRequestsView(generics.ListAPIView):
+    serializer_class = FriendRequestSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        return FriendRequest.objects.filter(receiver=self.request.user, status='pending')
